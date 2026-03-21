@@ -18,7 +18,13 @@ def strip_invalid_kwargs(model_path):
     shutil.copy2(model_path, clean_path)
     try:
         f = h5py.File(clean_path, mode='r+')
-        model_config = json.loads(f.attrs.get('model_config', '{}').decode('utf-8'))
+        model_config_raw = f.attrs.get('model_config', '{}')
+        if isinstance(model_config_raw, bytes):
+            model_config_str = model_config_raw.decode('utf-8')
+        else:
+            model_config_str = model_config_raw
+            
+        model_config = json.loads(model_config_str)
         
         def clean_layer(config):
             if 'config' in config:
