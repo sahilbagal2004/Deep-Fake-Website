@@ -1,7 +1,8 @@
 import cv2
 import numpy as np
+import os # Moved import os here
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'  # Suppress AVX CPU Info message
 import tensorflow as tf
-import os
 
 import h5py
 import json
