@@ -1,6 +1,6 @@
 Flask
 flask-cors
 opencv-python-headless
-numpy
-tensorflow
+numpy<2.0.0
+tensorflow<2.16.0
 gunicorn
