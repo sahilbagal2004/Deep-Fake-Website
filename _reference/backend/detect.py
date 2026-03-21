@@ -1,55 +1,35 @@
 import cv2
 import numpy as np
-import os # Moved import os here
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'  # Suppress AVX CPU Info message
+import os
+
+# Suppress AVX CPU Info message
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'  
 import tensorflow as tf
+from tensorflow.keras.layers import InputLayer, Dense
 
-import h5py
-import json
-import shutil
+# --- MONKEY PATCHING KERAS 3 to KERAS 2 ---
+# Keras 3 saves models with properties Keras 2 doesn't understand. 
+# We intercept the layer initialization to translate or delete these properties!
 
-# Load trained model
+_original_input_init = InputLayer.__init__
+def patched_input_init(self, **kwargs):
+    kwargs.pop('optional', None) # Present in Keras 3, invalid in Keras 2
+    if 'batch_shape' in kwargs:
+        # Keras 3 uses batch_shape, Keras 2 strictly expects batch_input_shape
+        kwargs['batch_input_shape'] = kwargs.pop('batch_shape')
+    _original_input_init(self, **kwargs)
+InputLayer.__init__ = patched_input_init
+
+_original_dense_init = Dense.__init__
+def patched_dense_init(self, **kwargs):
+    kwargs.pop('quantization_config', None) # Present in Keras 3, invalid in Keras 2
+    _original_dense_init(self, **kwargs)
+Dense.__init__ = patched_dense_init
+# ------------------------------------------
+
+# Load trained model safely
 MODEL_PATH = os.path.join(os.path.dirname(__file__), "model.h5")
-
-def strip_invalid_kwargs(model_path):
-    clean_path = model_path + ".clean.h5"
-    if os.path.exists(clean_path):
-        return clean_path
-    
-    shutil.copy2(model_path, clean_path)
-    try:
-        f = h5py.File(clean_path, mode='r+')
-        model_config_raw = f.attrs.get('model_config', '{}')
-        if isinstance(model_config_raw, bytes):
-            model_config_str = model_config_raw.decode('utf-8')
-        else:
-            model_config_str = model_config_raw
-            
-        model_config = json.loads(model_config_str)
-        
-        def clean_layer(config):
-            if 'config' in config:
-                config['config'].pop('quantization_config', None)
-                config['config'].pop('optional', None)
-            if 'layers' in config.get('config', {}):
-                for layer in config['config']['layers']:
-                    clean_layer(layer)
-                    
-        if 'config' in model_config and 'layers' in model_config['config']:
-            for layer in model_config['config']['layers']:
-                clean_layer(layer)
-                
-        f.attrs['model_config'] = json.dumps(model_config).encode('utf-8')
-        f.close()
-    except Exception as e:
-        print("H5 sanitization failed:", e)
-    return clean_path
-
-clean_model_path = strip_invalid_kwargs(MODEL_PATH)
-try:
-    model = tf.keras.models.load_model(clean_model_path, compile=False)
-except Exception:
-    model = tf.keras.models.load_model(MODEL_PATH, compile=False)
+model = tf.keras.models.load_model(MODEL_PATH, compile=False)
 
 
 def preprocess(frame):
@@ -58,12 +38,9 @@ def preprocess(frame):
     frame = np.expand_dims(frame, axis=0)
     return frame
 
-
 def detect_video(path):
-
     # Read uploaded image
     frame = cv2.imread(path)
-
     if frame is None:
         return "Error: Could not read image"
 
@@ -72,7 +49,6 @@ def detect_video(path):
 
     # Model prediction
     prediction = model.predict(frame)[0][0]
-
     print("Prediction Score:", prediction)
 
     # Confidence calculation
@@ -82,4 +58,4 @@ def detect_video(path):
     if prediction >= 0.5:
         return f"Real Image (Confidence: {confidence}%)"
     else:
-        return f"Fake Image (Confidence: {round(100-confidence,2)}%)"
+        return f"Fake Image (Confidence: {round(100 - confidence, 2)}%)"
