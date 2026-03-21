@@ -3,9 +3,46 @@ import numpy as np
 import tensorflow as tf
 import os
 
+import h5py
+import json
+import shutil
+
 # Load trained model
 MODEL_PATH = os.path.join(os.path.dirname(__file__), "model.h5")
-model = tf.keras.models.load_model(MODEL_PATH)
+
+def strip_invalid_kwargs(model_path):
+    clean_path = model_path + ".clean.h5"
+    if os.path.exists(clean_path):
+        return clean_path
+    
+    shutil.copy2(model_path, clean_path)
+    try:
+        f = h5py.File(clean_path, mode='r+')
+        model_config = json.loads(f.attrs.get('model_config', '{}').decode('utf-8'))
+        
+        def clean_layer(config):
+            if 'config' in config:
+                config['config'].pop('quantization_config', None)
+                config['config'].pop('optional', None)
+            if 'layers' in config.get('config', {}):
+                for layer in config['config']['layers']:
+                    clean_layer(layer)
+                    
+        if 'config' in model_config and 'layers' in model_config['config']:
+            for layer in model_config['config']['layers']:
+                clean_layer(layer)
+                
+        f.attrs['model_config'] = json.dumps(model_config).encode('utf-8')
+        f.close()
+    except Exception as e:
+        print("H5 sanitization failed:", e)
+    return clean_path
+
+clean_model_path = strip_invalid_kwargs(MODEL_PATH)
+try:
+    model = tf.keras.models.load_model(clean_model_path, compile=False)
+except Exception:
+    model = tf.keras.models.load_model(MODEL_PATH, compile=False)
 
 
 def preprocess(frame):
