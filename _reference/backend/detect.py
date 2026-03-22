@@ -69,6 +69,8 @@ model = tf.keras.models.load_model(clean_path, compile=False)
 
 
 def preprocess(frame):
+    # CRITICAL FIX: OpenCV reads as BGR, but Neural Networks are trained on RGB!
+    frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
     frame = cv2.resize(frame, (224, 224))
     frame = frame / 255.0
     frame = np.expand_dims(frame, axis=0)
