@@ -1,13 +1,13 @@
 from flask import Flask, request, jsonify
 from detect import detect_video
 import os
+import tempfile
 from flask_cors import CORS
 
 app = Flask(__name__)
 CORS(app)
 
-UPLOAD_FOLDER = "../uploads"
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+UPLOAD_FOLDER = tempfile.gettempdir()
 
 @app.route("/predict", methods=["POST"])
 def predict():
@@ -20,7 +20,11 @@ def predict():
     path = os.path.join(UPLOAD_FOLDER, file.filename)
     file.save(path)
 
-    result = detect_video(path)
+    try:
+        result = detect_video(path)
+    finally:
+        if os.path.exists(path):
+            os.remove(path)
 
     return jsonify({"result": result})
 
